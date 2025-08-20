@@ -1,23 +1,25 @@
 "use client";
 import React from 'react';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-// No início do arquivo
+// A importação 'next/image' foi removida para garantir a compatibilidade. Usaremos a tag <img> padrão.
 import { Code, Link, Trash2, Plus, ZoomIn, ZoomOut, Grid, Download, Upload, FileImage, GitCommitVertical, Sparkles, BrainCircuit, AlertTriangle, X } from 'lucide-react';
-// A biblioteca html-to-image será carregada dinamicamente via tag <script>
 import { nanoid } from 'nanoid';
 import ReactMarkdown from 'react-markdown';
-import Image from 'next/image'; // <-- ADICIONE ESTA LINHA
-
 
 // --- DEFINIÇÕES DE TIPO (TYPESCRIPT) ---
 type SymbolType = 'start' | 'end' | 'input' | 'process' | 'display';
 type VariableType = 'real' | 'inteiro' | 'caractere';
 
-// Adiciona a propriedade htmlToImage ao objeto global Window para o TypeScript
+// Tipo específico para as opções da biblioteca html-to-image
+interface HtmlToImageOptions {
+  backgroundColor?: string;
+  pixelRatio?: number;
+}
+
 declare global {
   interface Window {
     htmlToImage: {
-      toPng: (element: HTMLElement, options?: any) => Promise<string>;
+      toPng: (element: HTMLElement, options?: HtmlToImageOptions) => Promise<string>;
     };
   }
 }
@@ -49,14 +51,12 @@ const SYMBOL_CONFIG = {
 
 // --- COMPONENTES AUXILIARES ---
 
-// --- NOVO: DEFINIÇÃO DE TIPO PARA A NOTIFICAÇÃO ---
 type Toast = {
   id: string;
   message: string;
   type: 'error' | 'warning' | 'info';
 };
 
-// --- NOVO: COMPONENTE DE NOTIFICAÇÃO (TOAST) ---
 const ToastNotification: React.FC<{
   toast: Toast;
   onDismiss: (id: string) => void;
@@ -69,26 +69,24 @@ const ToastNotification: React.FC<{
       barColor: 'bg-red-500',
     },
     warning: {
-      // Adicione outros tipos se precisar
       icon: <AlertTriangle className="text-yellow-500" size={20} />,
       barColor: 'bg-yellow-500',
     },
     info: {
-      // Adicione outros tipos se precisar
       icon: <AlertTriangle className="text-blue-500" size={20} />,
       barColor: 'bg-blue-500',
     }
   };
 
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     setIsExiting(true);
-    setTimeout(() => onDismiss(toast.id), 300); // Espera a animação de saída terminar
-  };
+    setTimeout(() => onDismiss(toast.id), 300);
+  }, [onDismiss, toast.id]);
 
   useEffect(() => {
-    const timer = setTimeout(handleDismiss, 5000); // A notificação some após 5 segundos
+    const timer = setTimeout(handleDismiss, 5000);
     return () => clearTimeout(timer);
-  }, []);
+  }, [handleDismiss]);
 
   return (
     <div
@@ -268,17 +266,12 @@ export default function App() {
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState<{ title: string, content: string } | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
-
-  // NOVO ESTADO: Armazena o nome do algoritmo
   const [algorithmName, setAlgorithmName] = useState('MeuAlgoritmo');
-
-  // NOVO ESTADO: Para gerenciar as notificações
   const [toasts, setToasts] = useState<Toast[]>([]);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // NOVA FUNÇÃO: Adiciona uma notificação à lista
   const addToast = useCallback((message: string, type: Toast['type'] = 'error') => {
     const newToast: Toast = {
       id: nanoid(5),
@@ -288,7 +281,6 @@ export default function App() {
     setToasts((prevToasts) => [...prevToasts, newToast]);
   }, []);
 
-  // NOVA FUNÇÃO: Remove uma notificação da lista
   const removeToast = useCallback((id: string) => {
     setToasts((prevToasts) => prevToasts.filter((toast) => toast.id !== id));
   }, []);
@@ -427,7 +419,7 @@ export default function App() {
             setAlgorithmName(data.algorithmName);
           }
         }
-      } catch (error) { addToast('Arquivo JSON inválido.', 'error'); }
+      } catch (_error) { addToast('Arquivo JSON inválido.', 'error'); }
     };
     reader.readAsText(file);
     event.target.value = '';
@@ -442,17 +434,14 @@ export default function App() {
     }
   };
 
-  // --- FUNÇÃO DE GERAÇÃO DE CÓDIGO MELHORADA ---
   const generateVisualGCode = (showModal = true) => {
     const startNode = nodes.find(n => n.type === 'start');
     if (!startNode) {
       const errorMsg = "Erro: Bloco 'Início' não encontrado.";
-      // A função agora só mostra o toast, não abre mais um modal
       if (showModal) addToast(errorMsg, 'error');
       return errorMsg;
     }
 
-    // MODIFICADO: Usa o nome do algoritmo do estado
     let code = `algoritmo "${algorithmName || 'SemNome'}"\n`;
 
     const variables = new Set<string>();
@@ -470,7 +459,6 @@ export default function App() {
       switch (type) {
         case 'input':
           mainCode += `   leia(${text})\n`;
-          // MELHORADO: Processa múltiplas variáveis (ex: n1, n2)
           text.split(',').forEach(v => {
             const trimmedVar = v.trim();
             if (trimmedVar) {
@@ -480,7 +468,6 @@ export default function App() {
           break;
         case 'process':
           mainCode += `   ${text}\n`;
-          // CORRIGIDO: Adiciona a variável da atribuição (ex: resultado <- n1 + n2)
           const match = text.match(/^\s*(\w+)\s*<-/);
           if (match && match[1]) {
             variables.add(`${match[1]}: ${variableType || 'real'}`);
@@ -512,7 +499,7 @@ export default function App() {
     setAiResponse({ title, content: '' });
 
     try {
-      const apiKey = "AIzaSyDVmFt4Gb4fmwQxa36GITx7YMVvatQCnww"; // Deixe em branco se usar proxy ou variável de ambiente
+      const apiKey = "AIzaSyDVmFt4Gb4fmwQxa36GITx7YMVvatQCnww";
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
       const payload = { contents: [{ parts: [{ text: prompt }] }] };
 
@@ -573,7 +560,6 @@ export default function App() {
     const newNodes = nodes.map(node => {
       const sortedIndex = sortedPath.findIndex(n => n.id === node.id);
       if (sortedIndex !== -1) { return { ...node, position: { x: initialX, y: initialY + sortedIndex * spacingY } }; }
-      // Posiciona nós órfãos para não ficarem empilhados
       return { ...node, position: { x: node.position.x + 50, y: node.position.y + 50 } };
     });
     setNodes(newNodes);
@@ -586,7 +572,6 @@ export default function App() {
 
   return (
     <div className="bg-slate-200 font-sans flex flex-col h-screen overflow-hidden">
-      {/* --- NOVO: CONTÊINER DE NOTIFICAÇÕES --- */}
       <div className="fixed bottom-4 right-4 z-[100] w-full max-w-sm space-y-2">
         {toasts.map((toast) => (
           <ToastNotification key={toast.id} toast={toast} onDismiss={removeToast} />
@@ -596,23 +581,23 @@ export default function App() {
       {generatedCode && <CodeModal code={generatedCode} onClose={() => setGeneratedCode(null)} onExplain={handleExplainCode} />}
       {aiResponse && <AiResponseModal title={aiResponse.title} content={aiResponse.content} isLoading={isLoadingAi} onClose={() => setAiResponse(null)} />}
 
-      {/* MODIFICADO: Header com input para o nome do algoritmo */}
       <header className="bg-slate-800 text-white p-2 shadow-lg flex justify-between items-center z-40 flex-shrink-0 gap-4 h-16">
-        <Image
-          src="/images/letras.png" // O caminho começa com / e aponta para o arquivo na pasta public
-          alt="Logo do Projeto"
-          width={150}             // Largura real da imagem em pixels
-          height={100}            // Altura real da imagem em pixels
-          className="rounded-full" // Exemplo de classe para estilizar
-        />
-        <input
-          type="text"
-          value={algorithmName}
-          onChange={(e) => setAlgorithmName(e.target.value)}
-          placeholder="Nome do Algoritmo"
-          className="text-lg md:text-xl font-bold p-2 bg-transparent text-white rounded-md outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-slate-700 transition-all w-full max-w-xs md:max-w-md"
-          aria-label="Nome do Algoritmo"
-        />
+        <div className="flex items-center gap-3 h-full">
+            {/* CORRIGIDO: Substituído 'Image' de Next.js por 'img' padrão do HTML */}
+            <img
+              src="/images/letras.png"
+              alt="Logo do Projeto"
+              className="h-full w-auto object-contain"
+            />
+            <input
+              type="text"
+              value={algorithmName}
+              onChange={(e) => setAlgorithmName(e.target.value)}
+              placeholder="Nome do Algoritmo"
+              className="text-lg md:text-xl font-bold p-2 bg-transparent text-white rounded-md outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-slate-700 transition-all w-full max-w-xs md:max-w-md"
+              aria-label="Nome do Algoritmo"
+            />
+        </div>
         <div className="flex items-center space-x-1 flex-shrink-0">
           <button onClick={handleGenerateProblem} className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2">
             <Sparkles size={18} /> Gerar Problema
