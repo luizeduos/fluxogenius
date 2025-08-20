@@ -588,6 +588,7 @@ export default function App() {
               src="/images/letras.png"
               alt="Logo do Projeto"
               className="h-full w-auto object-contain"
+              width="150px"
             />
             <input
               type="text"
