@@ -19,7 +19,10 @@ declare global {
     htmlToImage: {
       toPng: (element: HTMLElement, options?: HtmlToImageOptions) => Promise<string>;
     };
-    jspdf: any;
+    jspdf: {
+      jsPDF: new (options?: object) => any; // Or be more specific with the type
+      autoTable: (options: object) => void;
+    };
     Prism: {
       highlightAll: () => void;
     };
@@ -468,7 +471,7 @@ export default function App() {
           setConnections(data.connections);
           if (data.algorithmName) { setAlgorithmName(data.algorithmName); }
         }
-      } catch (_error) { addToast('Arquivo JSON inválido.', 'error'); }
+      } catch { addToast('Arquivo JSON inválido.', 'error'); }
     };
     reader.readAsText(file);
     event.target.value = '';
@@ -483,8 +486,8 @@ export default function App() {
   const generateVisualGCode = (showModal = true) => {
     const startNode = nodes.find(n => n.type === 'start');
     if (!startNode) {
-        addToast("Erro: O fluxograma precisa ter um bloco 'Início'.", 'error');
-        return;
+      addToast("Erro: O fluxograma precisa ter um bloco 'Início'.", 'error');
+      return;
     }
 
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
@@ -496,63 +499,63 @@ export default function App() {
     const visited = new Set<string>();
 
     while (currentNode && !visited.has(currentNode.id)) {
-        visited.add(currentNode.id);
-        if (currentNode.type !== 'start' && currentNode.type !== 'end') {
-            orderedNodes.push(currentNode);
-        }
-        const nextNodeId = adjMap.get(currentNode.id);
-        currentNode = nextNodeId ? nodeMap.get(nextNodeId) : undefined;
+      visited.add(currentNode.id);
+      if (currentNode.type !== 'start' && currentNode.type !== 'end') {
+        orderedNodes.push(currentNode);
+      }
+      const nextNodeId = adjMap.get(currentNode.id);
+      currentNode = nextNodeId ? nodeMap.get(nextNodeId) : undefined;
     }
 
     const variables = new Map<string, string>();
     nodes.forEach(node => {
-        if (node.type === 'input') {
-            node.text.split(',').forEach(v => {
-                const varName = v.trim();
-                if (varName) {
-                    variables.set(varName, node.variableType || 'caractere');
-                }
-            });
-        } else if (node.type === 'process') {
-            const match = node.text.match(/^\s*([a-zA-Z0-9_]+)\s*<-/);
-            if (match && match[1]) {
-                const varName = match[1];
-                if (!variables.has(varName)) {
-                    variables.set(varName, node.variableType || 'real');
-                }
-            }
+      if (node.type === 'input') {
+        node.text.split(',').forEach(v => {
+          const varName = v.trim();
+          if (varName) {
+            variables.set(varName, node.variableType || 'caractere');
+          }
+        });
+      } else if (node.type === 'process') {
+        const match = node.text.match(/^\s*([a-zA-Z0-9_]+)\s*<-/);
+        if (match && match[1]) {
+          const varName = match[1];
+          if (!variables.has(varName)) {
+            variables.set(varName, node.variableType || 'real');
+          }
         }
+      }
     });
 
-    let mainCode = orderedNodes.map(node => {
-        const { type, text } = node;
-        switch (type) {
-            case 'input':
-                return `   leia(${text})`;
-            case 'process':
-                return `   ${text}`;
-            case 'display':
-                return `   escreval(${text})`;
-            case 'write':
-                return `   escreva(${text})`;
-            default:
-                return null;
-        }
+    const mainCode = orderedNodes.map(node => {
+      const { type, text } = node;
+      switch (type) {
+        case 'input':
+          return `   leia(${text})`;
+        case 'process':
+          return `   ${text}`;
+        case 'display':
+          return `   escreval(${text})`;
+        case 'write':
+          return `   escreva(${text})`;
+        default:
+          return null;
+      }
     }).filter(Boolean).join('\n') + '\n';
 
     let varBlock = '';
     if (variables.size > 0) {
-        variables.forEach((type, name) => {
-            varBlock += `   ${name}: ${type}\n`;
-        });
+      variables.forEach((type, name) => {
+        varBlock += `   ${name}: ${type}\n`;
+      });
     } else {
-        varBlock = "   // Nenhuma variável declarada\n";
+      varBlock = "   // Nenhuma variável declarada\n";
     }
-    
+
     const finalCode = `algoritmo "${algorithmName || 'SemNome'}"\nvar\n${varBlock}inicio\n${mainCode}fimalgoritmo\n`;
 
     if (showModal) {
-        setGeneratedCode(finalCode);
+      setGeneratedCode(finalCode);
     }
     return finalCode;
   };
@@ -570,12 +573,12 @@ export default function App() {
     const visited = new Set<string>();
 
     while (currentNode && !visited.has(currentNode.id)) {
-        visited.add(currentNode.id);
-        if (currentNode.type !== 'start' && currentNode.type !== 'end') {
-            orderedNodes.push(currentNode);
-        }
-        const nextNodeId = adjMap.get(currentNode.id);
-        currentNode = nextNodeId ? nodeMap.get(nextNodeId) : undefined;
+      visited.add(currentNode.id);
+      if (currentNode.type !== 'start' && currentNode.type !== 'end') {
+        orderedNodes.push(currentNode);
+      }
+      const nextNodeId = adjMap.get(currentNode.id);
+      currentNode = nextNodeId ? nodeMap.get(nextNodeId) : undefined;
     }
 
     const allVars = new Set<string>();
@@ -646,7 +649,7 @@ export default function App() {
       return;
     }
     const doc = new window.jspdf.jsPDF({ orientation: 'landscape' });
-    
+
     // Adiciona um título principal ao documento
     doc.setFontSize(18);
     doc.setTextColor(40);
@@ -671,12 +674,12 @@ export default function App() {
         const pageCount = doc.internal.getNumberOfPages();
         doc.setFontSize(10);
         doc.setTextColor(150);
-        
+
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        
+
         doc.text(footerText, 14, pageHeight - 10);
-        
+
         const pageNumText = `Página ${data.pageNumber} de ${pageCount}`;
         const pageNumTextWidth = doc.getStringUnitWidth(pageNumText) * doc.internal.getFontSize() / doc.internal.scaleFactor;
         doc.text(pageNumText, pageWidth - 14 - pageNumTextWidth, pageHeight - 10);
