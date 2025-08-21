@@ -587,7 +587,7 @@ export default function App() {
             <img
               src="/images/letras.png"
               alt="Logo do Projeto"
-              className="h-full w-auto object-contain"
+              className="object-cover"
               width="150"
             />
             <input
