@@ -1,26 +1,27 @@
 "use client";
 import React from 'react';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-// A importação 'next/image' foi removida para garantir a compatibilidade. Usaremos a tag <img> padrão.
-import { Code, Link, Trash2, Plus, ZoomIn, ZoomOut, Grid, Download, Upload, FileImage, GitCommitVertical, Sparkles, BrainCircuit, AlertTriangle, X } from 'lucide-react';
+// A importação 'next/image' foi removida. Usaremos a tag <img> padrão.
+import { Code, Link, Trash2, Plus, ZoomIn, ZoomOut, Grid, Download, Upload, FileImage, GitCommitVertical, Sparkles, BrainCircuit, AlertTriangle, X, Table } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import ReactMarkdown from 'react-markdown';
 
 // --- DEFINIÇÕES DE TIPO (TYPESCRIPT) ---
-type SymbolType = 'start' | 'end' | 'input' | 'process' | 'display';
+type SymbolType = 'start' | 'end' | 'input' | 'process' | 'display' | 'write';
 type VariableType = 'real' | 'inteiro' | 'caractere';
 
-// Tipo específico para as opções da biblioteca html-to-image
+// Tipos para as bibliotecas carregadas dinamicamente
 interface HtmlToImageOptions {
   backgroundColor?: string;
   pixelRatio?: number;
 }
-
+// Adicionando tipos para jsPDF e jsPDF-AutoTable para o TypeScript
 declare global {
   interface Window {
     htmlToImage: {
       toPng: (element: HTMLElement, options?: HtmlToImageOptions) => Promise<string>;
     };
+    jspdf: any;
   }
 }
 
@@ -46,7 +47,8 @@ const SYMBOL_CONFIG = {
   end: { label: 'Fim', shape: 'pill' },
   input: { label: 'Entrada', shape: 'parallelogram' },
   process: { label: 'Processo', shape: 'rectangle' },
-  display: { label: 'Exibição', shape: 'display' },
+  display: { label: 'Exibição (com quebra)', shape: 'display' },
+  write: { label: 'Escreva (sem quebra)', shape: 'hexagon' },
 };
 
 // --- COMPONENTES AUXILIARES ---
@@ -64,18 +66,9 @@ const ToastNotification: React.FC<{
   const [isExiting, setIsExiting] = useState(false);
 
   const theme = {
-    error: {
-      icon: <AlertTriangle className="text-red-500" size={20} />,
-      barColor: 'bg-red-500',
-    },
-    warning: {
-      icon: <AlertTriangle className="text-yellow-500" size={20} />,
-      barColor: 'bg-yellow-500',
-    },
-    info: {
-      icon: <AlertTriangle className="text-blue-500" size={20} />,
-      barColor: 'bg-blue-500',
-    }
+    error: { icon: <AlertTriangle className="text-red-500" size={20} />, barColor: 'bg-red-500' },
+    warning: { icon: <AlertTriangle className="text-yellow-500" size={20} />, barColor: 'bg-yellow-500' },
+    info: { icon: <AlertTriangle className="text-blue-500" size={20} />, barColor: 'bg-blue-500' }
   };
 
   const handleDismiss = useCallback(() => {
@@ -89,42 +82,23 @@ const ToastNotification: React.FC<{
   }, [handleDismiss]);
 
   return (
-    <div
-      className={`
-        flex items-start w-full max-w-sm bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden
-        transition-all duration-300 transform
-        ${isExiting ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'}
-      `}
-    >
+    <div className={`flex items-start w-full max-w-sm bg-white shadow-lg rounded-lg pointer-events-auto ring-1 ring-black ring-opacity-5 overflow-hidden transition-all duration-300 transform ${isExiting ? 'opacity-0 translate-x-4' : 'opacity-100 translate-x-0'}`}>
       <div className={`w-1.5 h-full ${theme[toast.type].barColor}`} />
-      <div className="flex items-center p-3 gap-3">
-        <div className="flex-shrink-0">
-          {theme[toast.type].icon}
-        </div>
-        <p className="text-sm font-medium text-slate-800">
-          {toast.message}
-        </p>
-      </div>
-      <button onClick={handleDismiss} className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors rounded-full m-1">
-        <X size={16} />
-      </button>
+      <div className="flex items-center p-3 gap-3"><div className="flex-shrink-0">{theme[toast.type].icon}</div><p className="text-sm font-medium text-slate-800">{toast.message}</p></div>
+      <button onClick={handleDismiss} className="ml-auto p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors rounded-full m-1"><X size={16} /></button>
     </div>
   );
 };
 
 const NodeComponent: React.FC<{
-  node: BlockNode;
-  isSelected: boolean;
-  onSelect: (id: string) => void;
-  onDragStart: (e: React.MouseEvent, id: string) => void;
-  onDoubleClick: (id: string) => void;
-  onDelete: (id: string) => void;
+  node: BlockNode; isSelected: boolean; onSelect: (id: string) => void; onDragStart: (e: React.MouseEvent, id: string) => void; onDoubleClick: (id: string) => void; onDelete: (id: string) => void;
 }> = ({ node, isSelected, onSelect, onDragStart, onDoubleClick, onDelete }) => {
   const getSymbolShapeStyle = () => {
     const config = SYMBOL_CONFIG[node.type];
     switch (config.shape) {
       case 'parallelogram': return { clipPath: 'polygon(25% 0%, 100% 0%, 75% 100%, 0% 100%)' };
       case 'display': return { clipPath: 'polygon(0% 0%, 90% 0%, 100% 50%, 90% 100%, 0% 100%)' };
+      case 'hexagon': return { clipPath: 'polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%)' };
       case 'pill': return { borderRadius: '9999px' };
       case 'rectangle': default: return { borderRadius: '0.5rem' };
     }
@@ -147,9 +121,7 @@ const Arrow: React.FC<{ fromNode: BlockNode; toNode: BlockNode }> = ({ fromNode,
 };
 
 const EditModal: React.FC<{
-  node: BlockNode | null;
-  onSave: (data: { text: string; type: VariableType }) => void;
-  onClose: () => void;
+  node: BlockNode | null; onSave: (data: { text: string; type: VariableType }) => void; onClose: () => void;
 }> = ({ node, onSave, onClose }) => {
   const [text, setText] = useState(node?.text || '');
   const [type, setType] = useState<VariableType>(node?.variableType || 'caractere');
@@ -158,28 +130,19 @@ const EditModal: React.FC<{
   useEffect(() => {
     setText(node?.text || '');
     setType(node?.variableType || 'caractere');
-    if (node) {
-      setTimeout(() => inputRef.current?.focus(), 0);
-    }
+    if (node) { setTimeout(() => inputRef.current?.focus(), 0); }
   }, [node]);
 
   if (!node) return null;
-
-  const handleSave = () => {
-    onSave({ text, type });
-    onClose();
-  };
-
+  const handleSave = () => { onSave({ text, type }); onClose(); };
   const showTypeSelector = node.type === 'input' || node.type === 'process';
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onMouseDown={onClose}>
       <div className="bg-white rounded-lg p-6 w-96 shadow-xl" onMouseDown={e => e.stopPropagation()}>
         <h2 className="text-lg font-semibold mb-4">Editar Bloco</h2>
-
         <label className="block text-sm font-medium text-slate-700 mb-1">Conteúdo do Bloco</label>
         <input ref={inputRef} type="text" className="w-full border rounded-md px-3 py-2 mb-4 focus:ring-2 focus:ring-indigo-500 outline-none" value={text} onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSave()} />
-
         {showTypeSelector && (
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tipo da Variável</label>
@@ -190,7 +153,6 @@ const EditModal: React.FC<{
             </select>
           </div>
         )}
-
         <div className="flex justify-end gap-2">
           <button className="px-4 py-2 border rounded-md hover:bg-slate-100" onClick={onClose}>Cancelar</button>
           <button className="px-4 py-2 border rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={handleSave}>Salvar</button>
@@ -200,17 +162,35 @@ const EditModal: React.FC<{
   );
 };
 
-
-const CodeModal: React.FC<{ code: string; onClose: () => void; onExplain: (code: string) => void; }> = ({ code, onClose, onExplain }) => {
+const CodeModal: React.FC<{ code: string; onClose: () => void; onExplain: (code: string) => void; onGenerateTestTable: () => void; }> = ({ code, onClose, onExplain, onGenerateTestTable }) => {
   const [copyText, setCopyText] = useState('Copiar');
-  const handleCopy = () => { navigator.clipboard.writeText(code); setCopyText('Copiado!'); setTimeout(() => setCopyText('Copiar'), 2000); };
+  
+  const handleCopy = () => {
+    const textArea = document.createElement('textarea');
+    textArea.value = code;
+    document.body.appendChild(textArea);
+    textArea.select();
+    try {
+      document.execCommand('copy');
+      setCopyText('Copiado!');
+    } catch (err) {
+      console.error('Falha ao copiar texto: ', err);
+      setCopyText('Erro ao copiar');
+    }
+    document.body.removeChild(textArea);
+    setTimeout(() => setCopyText('Copiar'), 2000);
+  };
+
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl" onClick={e => e.stopPropagation()}>
         <h2 className="text-lg font-semibold p-4 border-b">Código VisualG Gerado</h2>
         <pre className="p-4 bg-slate-900 text-white text-sm overflow-x-auto"><code>{code}</code></pre>
         <div className="flex justify-between items-center gap-2 p-4 border-t">
-          <button onClick={() => onExplain(code)} className="px-4 py-2 border rounded-md bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-2 transition-colors"><Sparkles size={16} /> ✨ Explicar Código</button>
+          <div className="flex gap-2">
+            <button onClick={() => onExplain(code)} className="px-4 py-2 border rounded-md bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-2 transition-colors"><Sparkles size={16} /> Explicar</button>
+            <button onClick={onGenerateTestTable} className="px-4 py-2 border rounded-md bg-sky-600 text-white hover:bg-sky-700 flex items-center gap-2 transition-colors"><Table size={16} /> Teste de Mesa</button>
+          </div>
           <div>
             <button className="px-4 py-2 border rounded-md hover:bg-slate-100" onClick={onClose}>Fechar</button>
             <button className="px-4 py-2 border rounded-md bg-emerald-600 text-white hover:bg-emerald-700 ml-2" onClick={handleCopy}>{copyText}</button>
@@ -221,30 +201,46 @@ const CodeModal: React.FC<{ code: string; onClose: () => void; onExplain: (code:
   );
 };
 
-const AiResponseModal: React.FC<{ title: string; content: string; onClose: () => void; isLoading: boolean; }> = ({ title, content, onClose, isLoading }) => {
+const AiResponseModal: React.FC<{ title: string; content: string; onClose: () => void; isLoading: boolean; }> = ({ title, content, onClose, isLoading }) => (
+  <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={onClose}>
+    <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+      <h2 className="text-lg font-semibold p-4 border-b flex-shrink-0 flex items-center gap-2"><BrainCircuit size={20} /> {title}</h2>
+      <div className="p-4 max-h-[60vh] overflow-y-auto">
+        {isLoading ? (<div className="flex items-center justify-center p-8"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div></div>) : (<div className="prose prose-slate max-w-none"><ReactMarkdown>{content}</ReactMarkdown></div>)}
+      </div>
+      <div className="flex justify-end gap-2 p-4 border-t flex-shrink-0"><button className="px-4 py-2 border rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={onClose}>Fechar</button></div>
+    </div>
+  </div>
+);
+
+const TestTableModal: React.FC<{
+  data: { headers: string[], rows: (string | null)[][] } | null;
+  onClose: () => void;
+  onExportPDF: () => void;
+  isJspdfLoaded: boolean;
+}> = ({ data, onClose, onExportPDF, isJspdfLoaded }) => {
+  if (!data) return null;
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60]" onClick={onClose}>
-      <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-semibold p-4 border-b flex-shrink-0 flex items-center gap-2">
-          <BrainCircuit size={20} /> {title}
-        </h2>
-        <div className="p-4 max-h-[60vh] overflow-y-auto">
-          {isLoading ? (
-            <div className="flex items-center justify-center p-8">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600"></div>
-            </div>
-          ) : (
-            <div className="prose prose-slate max-w-none">
-              <ReactMarkdown>
-                {content}
-              </ReactMarkdown>
-            </div>
-          )}
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={onClose}>
+      <div className="bg-white rounded-lg w-full max-w-4xl shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold p-4 border-b flex-shrink-0">Teste de Mesa</h2>
+        <div className="p-4 max-h-[70vh] overflow-y-auto">
+          <table id="test-table" className="w-full text-sm text-left text-slate-500">
+            <thead className="text-xs text-slate-700 uppercase bg-slate-100">
+              <tr>{data.headers.map(h => <th key={h} className="px-4 py-3">{h}</th>)}</tr>
+            </thead>
+            <tbody>
+              {data.rows.map((row, i) => (
+                <tr key={i} className="bg-white border-b hover:bg-slate-50">
+                  {row.map((cell, j) => <td key={j} className="px-4 py-2">{cell || '—'}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
         <div className="flex justify-end gap-2 p-4 border-t flex-shrink-0">
-          <button className="px-4 py-2 border rounded-md bg-indigo-600 text-white hover:bg-indigo-700" onClick={onClose}>
-            Fechar
-          </button>
+          <button className="px-4 py-2 border rounded-md hover:bg-slate-100" onClick={onClose}>Fechar</button>
+          <button onClick={onExportPDF} disabled={!isJspdfLoaded} className="px-4 py-2 border rounded-md bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed">Exportar PDF</button>
         </div>
       </div>
     </div>
@@ -263,52 +259,42 @@ export default function App() {
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
   const [isScriptLoaded, setIsScriptLoaded] = useState(false);
+  const [isJspdfLoaded, setIsJspdfLoaded] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState<{ title: string, content: string } | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [algorithmName, setAlgorithmName] = useState('MeuAlgoritmo');
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [testTableData, setTestTableData] = useState<{ headers: string[], rows: (string | null)[][] } | null>(null);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addToast = useCallback((message: string, type: Toast['type'] = 'error') => {
-    const newToast: Toast = {
-      id: nanoid(5),
-      message,
-      type,
-    };
-    setToasts((prevToasts) => [...prevToasts, newToast]);
+    setToasts((prev) => [...prev, { id: nanoid(5), message, type }]);
   }, []);
 
   const removeToast = useCallback((id: string) => {
-    setToasts((prevToasts) => prevToasts.filter((toast) => toast.id !== id));
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
   }, []);
 
   useEffect(() => {
-    const script = document.createElement('script');
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js';
-    script.onload = () => setIsScriptLoaded(true);
-    script.onerror = () => console.error('Falha ao carregar o script html-to-image.');
-    document.head.appendChild(script);
-    return () => {
-      const scriptTags = document.head.getElementsByTagName('script');
-      for (let i = 0; i < scriptTags.length; i++) {
-        if (scriptTags[i].src === script.src) { document.head.removeChild(scriptTags[i]); }
-      }
-    };
+    const scripts = [
+      { src: 'https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js', onload: () => setIsScriptLoaded(true) },
+      { src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', onload: null },
+      { src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js', onload: () => setIsJspdfLoaded(true) }
+    ];
+    scripts.forEach(s => {
+      const script = document.createElement('script');
+      script.src = s.src;
+      if (s.onload) script.onload = s.onload;
+      document.head.appendChild(script);
+    });
+    return () => { scripts.forEach(s => { const el = document.querySelector(`script[src="${s.src}"]`); if (el) document.head.removeChild(el); }); };
   }, []);
 
   const addNode = (type: SymbolType) => {
-    const newNode: BlockNode = {
-      id: nanoid(8),
-      type,
-      text: SYMBOL_CONFIG[type].label,
-      position: { x: 100, y: 100 },
-      width: 180,
-      height: 80,
-      variableType: type === 'input' ? 'caractere' : 'real'
-    };
+    const newNode: BlockNode = { id: nanoid(8), type, text: SYMBOL_CONFIG[type].label, position: { x: 100, y: 100 }, width: 180, height: 80, variableType: type === 'input' ? 'caractere' : 'real' };
     setNodes(prev => [...prev, newNode]);
     setSelectedNodeId(newNode.id);
   };
@@ -353,15 +339,8 @@ export default function App() {
 
   const updateNodeData = (data: { text: string; type: VariableType }) => {
     if (!editingNodeId) return;
-    setNodes(prev =>
-      prev.map(n =>
-        n.id === editingNodeId
-          ? { ...n, text: data.text, variableType: data.type }
-          : n
-      )
-    );
+    setNodes(prev => prev.map(n => n.id === editingNodeId ? { ...n, text: data.text, variableType: data.type } : n));
   };
-
 
   useEffect(() => {
     document.addEventListener('mousemove', handleMouseMove);
@@ -374,8 +353,7 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' && selectedNodeId) {
-        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'Delete' && selectedNodeId && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
         deleteNode(selectedNodeId);
       }
     };
@@ -415,9 +393,7 @@ export default function App() {
         if (data.nodes && data.connections) {
           setNodes(data.nodes);
           setConnections(data.connections);
-          if (data.algorithmName) {
-            setAlgorithmName(data.algorithmName);
-          }
+          if (data.algorithmName) { setAlgorithmName(data.algorithmName); }
         }
       } catch (_error) { addToast('Arquivo JSON inválido.', 'error'); }
     };
@@ -427,10 +403,7 @@ export default function App() {
 
   const clearCanvas = () => {
     if (window.confirm('Tem certeza? Isso limpará todo o diagrama.')) {
-      setNodes([]);
-      setConnections([]);
-      setSelectedNodeId(null);
-      setAlgorithmName("MeuAlgoritmo");
+      setNodes([]); setConnections([]); setSelectedNodeId(null); setAlgorithmName("MeuAlgoritmo");
     }
   };
 
@@ -443,27 +416,31 @@ export default function App() {
     }
 
     let code = `algoritmo "${algorithmName || 'SemNome'}"\n`;
-
     const variables = new Set<string>();
     let mainCode = "";
-    const nodeMap = new Map(nodes.map(n => [n.id, n]));
-    const adjMap = new Map<string, string>();
-    connections.forEach(c => adjMap.set(c.from, c.to));
-    let currentNode: BlockNode | undefined = startNode;
-    const visited = new Set<string>();
+    
+    const declaredVars = new Set<string>();
+    nodes.forEach(node => {
+        if (node.type === 'input') {
+            node.text.split(',').forEach(v => declaredVars.add(v.trim()));
+        } else if (node.type === 'process') {
+            const match = node.text.match(/^\s*(\w+)\s*<-/);
+            if (match && match[1]) declaredVars.add(match[1]);
+        }
+    });
 
-    while (currentNode && !visited.has(currentNode.id)) {
-      visited.add(currentNode.id);
-      const { type, text, variableType } = currentNode;
+    const orderedNodes = nodes
+      .filter(n => n.type !== 'start' && n.type !== 'end')
+      .sort((a, b) => a.position.y - b.position.y);
 
+    orderedNodes.forEach(node => {
+      const { type, text, variableType } = node;
       switch (type) {
         case 'input':
           mainCode += `   leia(${text})\n`;
           text.split(',').forEach(v => {
-            const trimmedVar = v.trim();
-            if (trimmedVar) {
-              variables.add(`${trimmedVar}: ${variableType || 'caractere'}`);
-            }
+            const t = v.trim();
+            if (t) variables.add(`${t}: ${variableType || 'caractere'}`);
           });
           break;
         case 'process':
@@ -474,12 +451,17 @@ export default function App() {
           }
           break;
         case 'display':
-          mainCode += `   escreval(${text})\n`;
+        case 'write':
+          const command = type === 'display' ? 'escreval' : 'escreva';
+          const isVar = text.split(',').every(t => declaredVars.has(t.trim()));
+          if (isVar) {
+            mainCode += `   ${command}(${text})\n`;
+          } else {
+            mainCode += `   ${command}("${text}")\n`;
+          }
           break;
       }
-      const nextNodeId = adjMap.get(currentNode.id);
-      currentNode = nextNodeId ? nodeMap.get(nextNodeId) : undefined;
-    }
+    });
 
     code += "var\n";
     if (variables.size > 0) {
@@ -488,42 +470,108 @@ export default function App() {
       code += "   // Nenhuma variável declarada\n";
     }
     code += "inicio\n" + mainCode + "fimalgoritmo\n";
-
     if (showModal) setGeneratedCode(code);
     return code;
   };
 
+  const handleGenerateTestTable = () => {
+    const startNode = nodes.find(n => n.type === 'start');
+    if (!startNode) { addToast("Erro: Bloco 'Início' não encontrado.", 'error'); return; }
+
+    const allVars = new Set<string>();
+    nodes.forEach(node => {
+      if (node.type === 'input') {
+        node.text.split(',').forEach(v => v.trim() && allVars.add(v.trim()));
+      } else if (node.type === 'process') {
+        const match = node.text.match(/^\s*(\w+)\s*<-/);
+        if (match && match[1]) allVars.add(match[1]);
+      }
+    });
+
+    const varList = Array.from(allVars);
+    const headers = ['Passo', 'Linha', ...varList, 'Saída', 'Explicação'];
+    const rows: (string | null)[][] = [];
+    const varState: Record<string, string | null> = Object.fromEntries(varList.map(v => [v, null]));
+
+    const orderedNodes = nodes
+      .filter(n => n.type !== 'start' && n.type !== 'end')
+      .sort((a, b) => a.position.y - b.position.y);
+
+    let step = 1;
+    let line = 3 + varList.length;
+
+    orderedNodes.forEach(node => {
+      const { type, text } = node;
+      const row = Array(headers.length).fill(null);
+      row[0] = String(step);
+      row[1] = String(line);
+
+      varList.forEach((v, i) => { row[i + 2] = varState[v]; });
+
+      switch (type) {
+        case 'input':
+          text.split(',').forEach(v => {
+            const trimmedVar = v.trim();
+            if (trimmedVar) {
+              varState[trimmedVar] = `[${trimmedVar}]`;
+              const varIndex = varList.indexOf(trimmedVar);
+              if (varIndex !== -1) row[varIndex + 2] = varState[trimmedVar];
+            }
+          });
+          row[row.length - 1] = `Lê entrada do utilizador para ${text}.`;
+          break;
+        case 'process':
+          const match = text.match(/^\s*(\w+)\s*<-/);
+          if (match && match[1]) {
+            const targetVar = match[1];
+            varState[targetVar] = text.split('<-')[1].trim();
+            const varIndex = varList.indexOf(targetVar);
+            if (varIndex !== -1) row[varIndex + 2] = varState[targetVar];
+          }
+          row[row.length - 1] = `Executa o processamento: ${text}.`;
+          break;
+        case 'display':
+        case 'write':
+          const command = type === 'display' ? 'escreval' : 'escreva';
+          const isVar = text.split(',').every(t => allVars.has(t.trim()));
+          if (isVar) {
+            row[row.length - 2] = `{${text}}`;
+            row[row.length - 1] = `Exibe o conteúdo de ${text} (${command}).`;
+          } else {
+            row[row.length - 2] = `{"${text}"}`;
+            row[row.length - 1] = `Exibe o texto "${text}" (${command}).`;
+          }
+          break;
+      }
+      rows.push(row);
+      step++;
+      line++;
+    });
+    setTestTableData({ headers, rows });
+  };
+  
+  const handleExportPDF = () => {
+    if (!isJspdfLoaded) { addToast("A biblioteca de PDF ainda não carregou.", "warning"); return; }
+    const doc = new window.jspdf.jsPDF();
+    doc.autoTable({ html: '#test-table' });
+    doc.save(`${algorithmName}-teste-de-mesa.pdf`);
+  };
 
   const handleGeminiCall = async (prompt: string, title: string) => {
-    setIsLoadingAi(true);
-    setAiResponse({ title, content: '' });
-
+    setIsLoadingAi(true); setAiResponse({ title, content: '' });
     try {
       const apiKey = "AIzaSyDVmFt4Gb4fmwQxa36GITx7YMVvatQCnww";
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
       const payload = { contents: [{ parts: [{ text: prompt }] }] };
-
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.json();
-        console.error("API Error Response:", errorBody);
-        throw new Error(`API Error: ${response.statusText}`);
-      }
-
+      const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (!response.ok) { const errorBody = await response.json(); console.error("API Error Response:", errorBody); throw new Error(`API Error: ${response.statusText}`); }
       const result = await response.json();
       const text = result.candidates[0].content.parts[0].text;
       setAiResponse({ title, content: text });
     } catch (error) {
       console.error("Gemini API call failed:", error);
       setAiResponse({ title, content: "Ocorreu um erro ao contatar a IA. Verifique o console para mais detalhes." });
-    } finally {
-      setIsLoadingAi(false);
-    }
+    } finally { setIsLoadingAi(false); }
   };
 
   const handleExplainCode = (code: string) => {
@@ -533,10 +581,7 @@ export default function App() {
 
   const handleGenerateProblem = () => {
     const code = generateVisualGCode(false);
-    if (code.startsWith("Erro")) {
-      addToast(code, 'error');
-      return;
-    }
+    if (code.startsWith("Erro")) { addToast(code, 'error'); return; }
     const prompt = `Crie um enunciado de problema simples do dia a dia que possa ser resolvido pelo seguinte algoritmo em VisualG. O enunciado deve ser claro, direto e usar formatação Markdown.\n\n---\n\n${code}`;
     handleGeminiCall(prompt, "✨ Problema Proposto");
   };
@@ -573,51 +618,29 @@ export default function App() {
   return (
     <div className="bg-slate-200 font-sans flex flex-col h-screen overflow-hidden">
       <div className="fixed bottom-4 right-4 z-[100] w-full max-w-sm space-y-2">
-        {toasts.map((toast) => (
-          <ToastNotification key={toast.id} toast={toast} onDismiss={removeToast} />
-        ))}
+        {toasts.map((toast) => (<ToastNotification key={toast.id} toast={toast} onDismiss={removeToast} />))}
       </div>
       {editingNodeId && <EditModal node={nodes.find(n => n.id === editingNodeId) || null} onSave={updateNodeData} onClose={() => setEditingNodeId(null)} />}
-      {generatedCode && <CodeModal code={generatedCode} onClose={() => setGeneratedCode(null)} onExplain={handleExplainCode} />}
+      {generatedCode && <CodeModal code={generatedCode} onClose={() => setGeneratedCode(null)} onExplain={handleExplainCode} onGenerateTestTable={handleGenerateTestTable} />}
       {aiResponse && <AiResponseModal title={aiResponse.title} content={aiResponse.content} isLoading={isLoadingAi} onClose={() => setAiResponse(null)} />}
+      {testTableData && <TestTableModal data={testTableData} onClose={() => setTestTableData(null)} onExportPDF={handleExportPDF} isJspdfLoaded={isJspdfLoaded} />}
 
       <header className="bg-slate-800 text-white p-2 shadow-lg flex justify-between items-center z-40 flex-shrink-0 gap-4 h-16">
         <div className="flex items-center gap-3 h-full">
-            {/* CORRIGIDO: Substituído 'Image' de Next.js por 'img' padrão do HTML */}
-            <img
-              src="/images/letras.png"
-              alt="Logo do Projeto"
-              className="object-cover"
-              width="150"
-            />
-            <input
-              type="text"
-              value={algorithmName}
-              onChange={(e) => setAlgorithmName(e.target.value)}
-              placeholder="Nome do Algoritmo"
-              className="text-lg md:text-xl font-bold p-2 bg-transparent text-white rounded-md outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-slate-700 transition-all w-full max-w-xs md:max-w-md"
-              aria-label="Nome do Algoritmo"
-            />
+            <img src="/images/letras.png" alt="Logo do Projeto" className="h-full w-auto object-contain"/>
+            <input type="text" value={algorithmName} onChange={(e) => setAlgorithmName(e.target.value)} placeholder="Nome do Algoritmo" className="text-lg md:text-xl font-bold p-2 bg-transparent text-white rounded-md outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-slate-700 transition-all w-full max-w-xs md:max-w-md" aria-label="Nome do Algoritmo"/>
         </div>
         <div className="flex items-center space-x-1 flex-shrink-0">
-          <button onClick={handleGenerateProblem} className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2">
-            <Sparkles size={18} /> Gerar Problema
-          </button>
-          <button onClick={() => generateVisualGCode()} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2">
-            <Code size={18} /> Gerar Código
-          </button>
-          <a href="https://luizeduos.web.app" target="_blank" rel="noopener noreferrer" className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2">
-            <Link size={18} /> Criador
-          </a>
+          <button onClick={handleGenerateProblem} className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2"><Sparkles size={18} /> Gerar Problema</button>
+          <button onClick={() => generateVisualGCode()} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2"><Code size={18} /> Gerar Código</button>
+          <a href="https://luizeduos.web.app" target="_blank" rel="noopener noreferrer" className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2"><Link size={18} /> Criador</a>
         </div>
       </header>
 
       <div className="flex-grow flex flex-col md:flex-row overflow-hidden">
         <aside className="w-full md:w-64 bg-slate-100 p-3 shadow-md overflow-y-auto flex-shrink-0">
           <h2 className="text-md font-semibold mb-3 text-slate-700">Blocos</h2>
-          <div className="space-y-2">
-            {Object.entries(SYMBOL_CONFIG).map(([type, { label }]) => (<button key={type} onClick={() => addNode(type as SymbolType)} className="w-full bg-slate-200 hover:bg-slate-300 p-2 rounded-lg text-slate-700 font-medium flex items-center gap-2 transition-colors"><Plus size={16} /> {label}</button>))}
-          </div>
+          <div className="space-y-2">{Object.entries(SYMBOL_CONFIG).map(([type, { label }]) => (<button key={type} onClick={() => addNode(type as SymbolType)} className="w-full bg-slate-200 hover:bg-slate-300 p-2 rounded-lg text-slate-700 font-medium flex items-center gap-2 transition-colors"><Plus size={16} /> {label}</button>))}</div>
           <div className="mt-4 border-t pt-3">
             <h2 className="text-md font-semibold mb-3 text-slate-700">Ações</h2>
             <div className="space-y-2">
