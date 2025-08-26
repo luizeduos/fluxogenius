@@ -692,7 +692,7 @@ export default function App() {
   const handleGeminiCall = async (prompt: string, title: string) => {
     setIsLoadingAi(true); setAiResponse({ title, content: '' });
     try {
-      const apiKey = ""; // Chave API removida por segurança
+      const apiKey = "AIzaSyDVmFt4Gb4fmwQxa36GITx7YMVvatQCnww"; // Chave API removida por segurança
       const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
       const payload = { contents: [{ parts: [{ text: prompt }] }] };
       const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
