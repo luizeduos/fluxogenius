@@ -1,7 +1,7 @@
 "use client";
 import React from 'react';
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
-import { Code, Link, Trash2, Plus, ZoomIn, ZoomOut, Grid, Download, Upload, FileImage, GitCommitVertical, Sparkles, BrainCircuit, AlertTriangle, X, Table, MousePointer2 } from 'lucide-react';
+import { Code, Link, Trash2, Plus, ZoomIn, ZoomOut, Grid, Download, Upload, FileImage, GitCommitVertical, Sparkles, BrainCircuit, AlertTriangle, X, Table, MousePointer2, FileText, BotMessageSquare } from 'lucide-react';
 import { nanoid } from 'nanoid';
 import ReactMarkdown from 'react-markdown';
 
@@ -20,11 +20,16 @@ declare global {
       toPng: (element: HTMLElement, options?: HtmlToImageOptions) => Promise<string>;
     };
     jspdf: {
-      jsPDF: new (options?: object) => any; // Or be more specific with the type
+      jsPDF: new (options?: object) => any;
       autoTable: (options: object) => void;
     };
     Prism: {
       highlightAll: () => void;
+      highlight: (text: string, grammar: any, language: string) => string;
+      languages: {
+        cpp: any;
+        pascal: any;
+      };
     };
   }
 }
@@ -55,12 +60,19 @@ const SYMBOL_CONFIG = {
   write: { label: 'Saída (escreva)', shape: 'hexagon' },
 };
 
+// --- FUNÇÕES AUXILIARES ---
+const removeCodeComments = (code: string, commentSymbol: '//' | '--') => {
+    if (!code) return '';
+    return code.split('\n').map(line => line.split(commentSymbol)[0].trimEnd()).filter(line => line.trim() !== '').join('\n');
+};
+
+
 // --- COMPONENTES AUXILIARES ---
 
 type Toast = {
   id: string;
   message: string;
-  type: 'error' | 'warning' | 'info';
+  type: 'error' | 'warning' | 'info' | 'success';
 };
 
 const ToastNotification: React.FC<{
@@ -72,7 +84,8 @@ const ToastNotification: React.FC<{
   const theme = {
     error: { icon: <AlertTriangle className="text-red-500" size={20} />, barColor: 'bg-red-500' },
     warning: { icon: <AlertTriangle className="text-yellow-500" size={20} />, barColor: 'bg-yellow-500' },
-    info: { icon: <AlertTriangle className="text-blue-500" size={20} />, barColor: 'bg-blue-500' }
+    info: { icon: <AlertTriangle className="text-blue-500" size={20} />, barColor: 'bg-blue-500' },
+    success: { icon: <Sparkles className="text-green-500" size={20} />, barColor: 'bg-green-500' }
   };
 
   const handleDismiss = useCallback(() => {
@@ -186,7 +199,43 @@ const EditModal: React.FC<{
   );
 };
 
-const CodeModal: React.FC<{ code: string; onClose: () => void; onExplain: (code: string) => void; onGenerateTestTable: () => void; isPrismLoaded: boolean; }> = ({ code, onClose, onExplain, onGenerateTestTable, isPrismLoaded }) => {
+const GenericCodeModal: React.FC<{ title: string; code: string; language: 'pascal' | 'cpp'; onClose: () => void; isPrismLoaded: boolean; }> = ({ title, code, language, onClose, isPrismLoaded }) => {
+    const [copyText, setCopyText] = useState('Copiar');
+    const highlightedCode = useMemo(() => {
+        if (isPrismLoaded && window.Prism && window.Prism.languages[language]) {
+            return window.Prism.highlight(code, window.Prism.languages[language], language);
+        }
+        return code; // Fallback to plain text
+    }, [code, language, isPrismLoaded]);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(code).then(() => {
+            setCopyText('Copiado!');
+            setTimeout(() => setCopyText('Copiar'), 2000);
+        }).catch(err => {
+            console.error('Falha ao copiar:', err);
+            setCopyText('Erro!');
+        });
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+            <div className="bg-white rounded-lg w-full max-w-2xl shadow-xl flex flex-col" onClick={e => e.stopPropagation()}>
+                <h2 className="text-lg font-semibold p-4 border-b">{title}</h2>
+                <div className="p-4 bg-[#282c34] max-h-[60vh] overflow-y-auto">
+                    <pre className="!bg-transparent !p-0 !m-0"><code className={`language-${language} text-sm`} dangerouslySetInnerHTML={{ __html: highlightedCode }} /></pre>
+                </div>
+                <div className="flex justify-end gap-2 p-4 border-t">
+                    <button className="px-4 py-2 border rounded-md hover:bg-slate-100" onClick={onClose}>Fechar</button>
+                    <button className="px-4 py-2 border rounded-md bg-emerald-600 text-white hover:bg-emerald-700" onClick={handleCopy}>{copyText}</button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+
+const CodeModal: React.FC<{ code: string; onClose: () => void; onExplain: (code: string) => void; onGenerateTestTable: () => void; onConvertToCpp: (code: string) => void; isPrismLoaded: boolean; }> = ({ code, onClose, onExplain, onGenerateTestTable, onConvertToCpp, isPrismLoaded }) => {
   const [copyText, setCopyText] = useState('Copiar');
 
   useEffect(() => {
@@ -196,19 +245,13 @@ const CodeModal: React.FC<{ code: string; onClose: () => void; onExplain: (code:
   }, [code, isPrismLoaded]);
 
   const handleCopy = () => {
-    const textArea = document.createElement('textarea');
-    textArea.value = code;
-    document.body.appendChild(textArea);
-    textArea.select();
-    try {
-      document.execCommand('copy');
+    navigator.clipboard.writeText(code).then(() => {
       setCopyText('Copiado!');
-    } catch (err) {
+      setTimeout(() => setCopyText('Copiar'), 2000);
+    }).catch(err => {
       console.error('Falha ao copiar texto: ', err);
       setCopyText('Erro ao copiar');
-    }
-    document.body.removeChild(textArea);
-    setTimeout(() => setCopyText('Copiar'), 2000);
+    });
   };
 
   return (
@@ -221,9 +264,10 @@ const CodeModal: React.FC<{ code: string; onClose: () => void; onExplain: (code:
           </pre>
         </div>
         <div className="flex justify-between items-center gap-2 p-4 border-t">
-          <div className="flex gap-2">
-            <button onClick={() => onExplain(code)} className="px-4 py-2 border rounded-md bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-2 transition-colors"><Sparkles size={16} /> Explicar</button>
-            <button onClick={onGenerateTestTable} className="px-4 py-2 border rounded-md bg-sky-600 text-white hover:bg-sky-700 flex items-center gap-2 transition-colors"><Table size={16} /> Teste de Mesa</button>
+          <div className="flex gap-2 flex-wrap">
+            <button onClick={() => onExplain(code)} className="px-3 py-2 border rounded-md bg-purple-600 text-white hover:bg-purple-700 flex items-center gap-2 transition-colors"><Sparkles size={16} /> Explicar</button>
+            <button onClick={onGenerateTestTable} className="px-3 py-2 border rounded-md bg-sky-600 text-white hover:bg-sky-700 flex items-center gap-2 transition-colors"><Table size={16} /> Teste de Mesa</button>
+            <button onClick={() => onConvertToCpp(code)} className="px-3 py-2 border rounded-md bg-blue-600 text-white hover:bg-blue-700 flex items-center gap-2 transition-colors"><Code size={16} /> Converter C++</button>
           </div>
           <div>
             <button className="px-4 py-2 border rounded-md hover:bg-slate-100" onClick={onClose}>Fechar</button>
@@ -246,6 +290,50 @@ const AiResponseModal: React.FC<{ title: string; content: string; onClose: () =>
     </div>
   </div>
 );
+
+const StatementModal: React.FC<{
+    isOpen: boolean;
+    onClose: () => void;
+    onGenerate: (statement: string) => void;
+    isLoading: boolean;
+}> = ({ isOpen, onClose, onGenerate, isLoading }) => {
+    const [statement, setStatement] = useState('');
+    if (!isOpen) return null;
+
+    const handleSubmit = () => {
+        if (statement.trim()) {
+            onGenerate(statement);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[70]" onClick={onClose}>
+            <div className="bg-white rounded-lg p-6 w-full max-w-lg shadow-xl" onClick={e => e.stopPropagation()}>
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><BotMessageSquare size={20}/> Gerar Diagrama a partir de Enunciado</h2>
+                <p className='text-sm text-slate-600 mb-3'>Descreva o problema que você quer resolver e a IA irá gerar o diagrama de blocos correspondente.</p>
+                <textarea
+                    value={statement}
+                    onChange={(e) => setStatement(e.target.value)}
+                    placeholder="Ex: Crie um algoritmo que leia dois números, calcule a soma e mostre o resultado."
+                    className="w-full h-40 border rounded-md p-3 mb-4 focus:ring-2 focus:ring-indigo-500 outline-none resize-y"
+                    disabled={isLoading}
+                />
+                <div className="flex justify-end gap-2">
+                    <button className="px-4 py-2 border rounded-md hover:bg-slate-100" onClick={onClose} disabled={isLoading}>Cancelar</button>
+                    <button
+                        className="px-4 py-2 border rounded-md bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-wait flex items-center gap-2"
+                        onClick={handleSubmit}
+                        disabled={isLoading || !statement.trim()}
+                    >
+                        {isLoading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
+                        Gerar Diagrama
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 
 const TestTableModal: React.FC<{
   data: { headers: string[], rows: (string | null)[][] } | null;
@@ -292,10 +380,11 @@ export default function App() {
   const [connectFromId, setConnectFromId] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [showGrid, setShowGrid] = useState(true);
-  const [isScriptLoaded, setIsScriptLoaded] = useState(false);
+  const [isHtml2ImageLoaded, setIsHtml2ImageLoaded] = useState(false);
   const [isJspdfLoaded, setIsJspdfLoaded] = useState(false);
   const [isPrismLoaded, setIsPrismLoaded] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+  const [generatedCppCode, setGeneratedCppCode] = useState<string | null>(null);
   const [aiResponse, setAiResponse] = useState<{ title: string, content: string } | null>(null);
   const [isLoadingAi, setIsLoadingAi] = useState(false);
   const [algorithmName, setAlgorithmName] = useState('MeuAlgoritmo');
@@ -305,6 +394,7 @@ export default function App() {
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null);
+  const [isStatementModalOpen, setIsStatementModalOpen] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -318,29 +408,37 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css';
-    document.head.appendChild(link);
+    const cssLinks = [
+        'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css'
+    ];
+    cssLinks.forEach(href => {
+        const link = document.createElement('link');
+        link.rel = 'stylesheet';
+        link.href = href;
+        document.head.appendChild(link);
+    });
 
     const scripts = [
-      { src: 'https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js', onload: () => setIsScriptLoaded(true) },
+      { src: 'https://cdnjs.cloudflare.com/ajax/libs/html-to-image/1.11.11/html-to-image.min.js', onload: () => setIsHtml2ImageLoaded(true) },
       { src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', onload: null },
-      { src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.23/jspdf.plugin.autotable.min.js', onload: () => setIsJspdfLoaded(true) },
+      { src: 'https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js', onload: () => setIsJspdfLoaded(true) },
       { src: 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-core.min.js', onload: null },
-      { src: 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-pascal.min.js', onload: () => setIsPrismLoaded(true) }
+      { src: 'https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/plugins/autoloader/prism-autoloader.min.js', onload: () => setIsPrismLoaded(true)},
     ];
     scripts.forEach(s => {
       const script = document.createElement('script');
       script.src = s.src;
+      script.async = true;
       if (s.onload) script.onload = s.onload;
-      document.head.appendChild(script);
+      document.body.appendChild(script);
     });
+
     return () => {
-      document.head.removeChild(link);
-      scripts.forEach(s => { const el = document.querySelector(`script[src="${s.src}"]`); if (el) document.head.removeChild(el); });
+      cssLinks.forEach(href => { const el = document.querySelector(`link[href="${href}"]`); if (el) document.head.removeChild(el); });
+      scripts.forEach(s => { const el = document.querySelector(`script[src="${s.src}"]`); if (el) document.body.removeChild(el); });
     };
-  }, []);
+}, []);
+
 
   const addNode = (type: SymbolType) => {
     const newNode: BlockNode = { id: nanoid(8), type, text: SYMBOL_CONFIG[type].label, position: { x: 100 - panOffset.x, y: 100 - panOffset.y }, width: 180, height: 80, variableType: type === 'input' ? 'caractere' : 'real' };
@@ -362,9 +460,9 @@ export default function App() {
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isPanning && canvasRef.current) {
-      const dx = (e.clientX - panStart.x) / zoom;
-      const dy = (e.clientY - panStart.y) / zoom;
-      setPanOffset({ x: panOffset.x + dx, y: panOffset.y + dy });
+      const dx = e.clientX - panStart.x;
+      const dy = e.clientY - panStart.y;
+      setPanOffset({ x: panOffset.x + dx / zoom, y: panOffset.y + dy / zoom });
       setPanStart({ x: e.clientX, y: e.clientY });
       return;
     }
@@ -438,7 +536,7 @@ export default function App() {
   }, [selectedNodeId, deleteNode]);
 
   const exportToPNG = useCallback(() => {
-    if (!isScriptLoaded || !canvasRef.current) return;
+    if (!isHtml2ImageLoaded || !canvasRef.current) return;
     window.htmlToImage.toPng(canvasRef.current, { backgroundColor: '#f8fafc', pixelRatio: 2 })
       .then((dataUrl: string) => {
         const link = document.createElement('a');
@@ -446,7 +544,7 @@ export default function App() {
         link.href = dataUrl;
         link.click();
       }).catch((err: unknown) => console.error(err));
-  }, [isScriptLoaded, algorithmName]);
+  }, [isHtml2ImageLoaded, algorithmName]);
 
   const exportToJSON = () => {
     const data = JSON.stringify({ nodes, connections, algorithmName }, null, 2);
@@ -487,7 +585,7 @@ export default function App() {
     const startNode = nodes.find(n => n.type === 'start');
     if (!startNode) {
       addToast("Erro: O fluxograma precisa ter um bloco 'Início'.", 'error');
-      return;
+      return null;
     }
 
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
@@ -560,9 +658,12 @@ export default function App() {
     return finalCode;
   };
 
-  const handleGenerateTestTable = () => {
+  const generateTestTableData = () => {
     const startNode = nodes.find(n => n.type === 'start');
-    if (!startNode) { addToast("Erro: Bloco 'Início' não encontrado.", 'error'); return; }
+    if (!startNode) {
+        addToast("Erro: Bloco 'Início' não encontrado.", 'error');
+        return null;
+    }
 
     const nodeMap = new Map(nodes.map(n => [n.id, n]));
     const adjMap = new Map<string, string>();
@@ -573,22 +674,22 @@ export default function App() {
     const visited = new Set<string>();
 
     while (currentNode && !visited.has(currentNode.id)) {
-      visited.add(currentNode.id);
-      if (currentNode.type !== 'start' && currentNode.type !== 'end') {
-        orderedNodes.push(currentNode);
-      }
-      const nextNodeId = adjMap.get(currentNode.id);
-      currentNode = nextNodeId ? nodeMap.get(nextNodeId) : undefined;
+        visited.add(currentNode.id);
+        if (currentNode.type !== 'start' && currentNode.type !== 'end') {
+            orderedNodes.push(currentNode);
+        }
+        const nextNodeId = adjMap.get(currentNode.id);
+        currentNode = nextNodeId ? nodeMap.get(nextNodeId) : undefined;
     }
 
     const allVars = new Set<string>();
     nodes.forEach(node => {
-      if (node.type === 'input') {
-        node.text.split(',').forEach(v => v.trim() && allVars.add(v.trim()));
-      } else if (node.type === 'process') {
-        const match = node.text.match(/^\s*(\w+)\s*<-/);
-        if (match && match[1]) allVars.add(match[1]);
-      }
+        if (node.type === 'input') {
+            node.text.split(',').forEach(v => v.trim() && allVars.add(v.trim()));
+        } else if (node.type === 'process') {
+            const match = node.text.match(/^\s*(\w+)\s*<-/);
+            if (match && match[1]) allVars.add(match[1]);
+        }
     });
 
     const varList = Array.from(allVars);
@@ -600,123 +701,269 @@ export default function App() {
     let line = 3 + varList.length;
 
     orderedNodes.forEach(node => {
-      const { type, text } = node;
-      const row = Array(headers.length).fill(null);
-      row[0] = String(step);
-      row[1] = String(line);
+        const { type, text } = node;
+        const row = Array(headers.length).fill(null);
+        row[0] = String(step);
+        row[1] = String(line);
 
-      varList.forEach((v, i) => { row[i + 2] = varState[v]; });
+        varList.forEach((v, i) => { row[i + 2] = varState[v]; });
 
-      switch (type) {
-        case 'input':
-          text.split(',').forEach(v => {
-            const trimmedVar = v.trim();
-            if (trimmedVar) {
-              varState[trimmedVar] = `[${trimmedVar}]`;
-              const varIndex = varList.indexOf(trimmedVar);
-              if (varIndex !== -1) row[varIndex + 2] = varState[trimmedVar];
-            }
-          });
-          row[row.length - 1] = `Lê entrada do utilizador para ${text}.`;
-          break;
-        case 'process':
-          const match = text.match(/^\s*(\w+)\s*<-/);
-          if (match && match[1]) {
-            const targetVar = match[1];
-            varState[targetVar] = text.split('<-')[1].trim();
-            const varIndex = varList.indexOf(targetVar);
-            if (varIndex !== -1) row[varIndex + 2] = varState[targetVar];
-          }
-          row[row.length - 1] = `Executa o processamento: ${text}.`;
-          break;
-        case 'display':
-        case 'write':
-          const command = type === 'display' ? 'escreval' : 'escreva';
-          row[row.length - 2] = `{${text}}`;
-          row[row.length - 1] = `Exibe o conteúdo de ${text} (${command}).`;
-          break;
-      }
-      rows.push(row);
-      step++;
-      line++;
+        switch (type) {
+            case 'input':
+                text.split(',').forEach(v => {
+                    const trimmedVar = v.trim();
+                    if (trimmedVar) {
+                        varState[trimmedVar] = `[${trimmedVar}]`;
+                        const varIndex = varList.indexOf(trimmedVar);
+                        if (varIndex !== -1) row[varIndex + 2] = varState[trimmedVar];
+                    }
+                });
+                row[row.length - 1] = `Lê entrada do utilizador para ${text}.`;
+                break;
+            case 'process':
+                const match = text.match(/^\s*(\w+)\s*<-/);
+                if (match && match[1]) {
+                    const targetVar = match[1];
+                    varState[targetVar] = text.split('<-')[1].trim();
+                    const varIndex = varList.indexOf(targetVar);
+                    if (varIndex !== -1) row[varIndex + 2] = varState[targetVar];
+                }
+                row[row.length - 1] = `Executa o processamento: ${text}.`;
+                break;
+            case 'display':
+            case 'write':
+                const command = type === 'display' ? 'escreval' : 'escreva';
+                row[row.length - 2] = `{${text}}`;
+                row[row.length - 1] = `Exibe o conteúdo de ${text} (${command}).`;
+                break;
+        }
+        rows.push(row);
+        step++;
+        line++;
     });
-    setTestTableData({ headers, rows });
+
+    return { headers, rows };
+};
+
+
+  const handleGenerateTestTable = () => {
+    const data = generateTestTableData();
+    if (data) {
+        setTestTableData(data);
+    }
   };
 
-  const handleExportPDF = () => {
+  const handleExportTestTablePDF = () => {
     if (!isJspdfLoaded) {
       addToast("A biblioteca de PDF ainda não carregou.", "warning");
       return;
     }
     const doc = new window.jspdf.jsPDF({ orientation: 'landscape' });
-
-    // Adiciona um título principal ao documento
     doc.setFontSize(18);
     doc.setTextColor(40);
     doc.text(`Teste de Mesa: ${algorithmName}`, 14, 22);
-
-    // Gera a tabela com estilos melhorados
-    doc.autoTable({
+    window.jspdf.autoTable(doc, {
       html: '#test-table',
       startY: 30,
       theme: 'grid',
-      headStyles: {
-        fillColor: [41, 128, 185], // Azul
-        textColor: 255,
-        fontStyle: 'bold',
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245],
-      },
-      didDrawPage: (data: { pageNumber: number; }) => {
-        // --- Rodapé ---
-        const footerText = "Gerado por FluxoGenius: https://fluxogenius.vercel.app";
-        const pageCount = doc.internal.getNumberOfPages();
-        doc.setFontSize(10);
-        doc.setTextColor(150);
-
-        const pageWidth = doc.internal.pageSize.getWidth();
-        const pageHeight = doc.internal.pageSize.getHeight();
-
-        doc.text(footerText, 14, pageHeight - 10);
-
-        const pageNumText = `Página ${data.pageNumber} de ${pageCount}`;
-        const pageNumTextWidth = doc.getStringUnitWidth(pageNumText) * doc.internal.getFontSize() / doc.internal.scaleFactor;
-        doc.text(pageNumText, pageWidth - 14 - pageNumTextWidth, pageHeight - 10);
-      },
+      headStyles: { fillColor: [41, 128, 185], textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [245, 245, 245] },
     });
-
     doc.save(`${algorithmName}-teste-de-mesa.pdf`);
   };
 
-  const handleGeminiCall = async (prompt: string, title: string) => {
-    setIsLoadingAi(true); setAiResponse({ title, content: '' });
+  const handleGeminiCall = async (prompt: string, title?: string): Promise<string> => {
+    if (title) {
+        setIsLoadingAi(true);
+        setAiResponse({ title, content: '' });
+    }
     try {
-      const apiKey = "AIzaSyDVmFt4Gb4fmwQxa36GITx7YMVvatQCnww"; // Chave API removida por segurança
-      const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-      const payload = { contents: [{ parts: [{ text: prompt }] }] };
-      const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!response.ok) { const errorBody = await response.json(); console.error("API Error Response:", errorBody); throw new Error(`API Error: ${response.statusText}`); }
-      const result = await response.json();
-      const text = result.candidates[0].content.parts[0].text;
-      setAiResponse({ title, content: text });
+        // ATENÇÃO: A chave de API está exposta no código do cliente.
+        // Em um aplicativo real, essa chamada deve ser feita a partir de um backend para proteger a chave.
+        const apiKey = "AIzaSyDVmFt4Gb4fmwQxa36GITx7YMVvatQCnww";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+        const payload = { contents: [{ parts: [{ text: prompt }] }] };
+        const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+
+        if (!response.ok) {
+            const errorBody = await response.json();
+            console.error("API Error Response:", errorBody);
+            throw new Error(`API Error: ${response.statusText}`);
+        }
+        const result = await response.json();
+        const text = result.candidates[0].content.parts[0].text;
+        if (title) {
+            setAiResponse({ title, content: text });
+        }
+        return text;
     } catch (error) {
-      console.error("Gemini API call failed:", error);
-      setAiResponse({ title, content: "Ocorreu um erro ao contatar a IA. Verifique o console para mais detalhes." });
-    } finally { setIsLoadingAi(false); }
-  };
+        console.error("Gemini API call failed:", error);
+        const errorMessage = "Ocorreu um erro ao contatar a IA. Verifique o console para mais detalhes.";
+        if (title) {
+            setAiResponse({ title, content: errorMessage });
+        }
+        return `Error: ${errorMessage}`;
+    } finally {
+        if (title) {
+            setIsLoadingAi(false);
+        }
+    }
+};
 
   const handleExplainCode = (code: string) => {
     const prompt = `Explique o seguinte código VisualG para um programador iniciante, detalhando o que cada linha faz e qual o objetivo geral do algoritmo. Seja claro e didático, usando formatação Markdown.\n\n---\n\n${code}`;
     handleGeminiCall(prompt, "✨ Explicação do Código");
   };
 
+  const handleConvertToCpp = async (code: string) => {
+    const prompt = `Converta o seguinte código VisualG para C++. Forneça apenas o código C++ funcional e completo, sem nenhuma explicação, comentário ou formatação markdown. Inclua os cabeçalhos necessários como iostream e use o namespace std.\n\n---\n\nVisualG:\n${code}\n\n---\nC++:`;
+    const cppCode = await handleGeminiCall(prompt); // Não exibe modal de carregamento
+    if (!cppCode.startsWith('Error:')) {
+      setGeneratedCppCode(cppCode);
+    } else {
+        addToast("Falha ao converter o código para C++.", "error");
+    }
+  };
+
   const handleGenerateProblem = () => {
     const code = generateVisualGCode(false);
-    if (!code || code.startsWith("Erro")) { addToast(code || "Erro desconhecido ao gerar código.", 'error'); return; }
+    if (!code) { return; }
     const prompt = `Crie um enunciado de problema simples do dia a dia que possa ser resolvido pelo seguinte algoritmo em VisualG. O enunciado deve ser claro, direto e usar formatação Markdown.\n\n---\n\n${code}`;
     handleGeminiCall(prompt, "✨ Problema Proposto");
   };
+
+  const handleGenerateFromStatement = async (statement: string) => {
+    setIsLoadingAi(true);
+    const prompt = `
+      Analise o seguinte enunciado de um problema de algoritmo e converta-o para uma estrutura JSON que representa um fluxograma.
+      O JSON deve ter duas chaves principais: "nodes" e "connections".
+      - "nodes" é um array de objetos, onde cada objeto tem: id (string nanoid(8)), type ('start'|'input'|'process'|'display'|'end'), text (string), position ({x, y}), width (180), height (80).
+      - "connections" é um array de objetos, onde cada objeto tem: id (string nanoid()), from (id de um nó), to (id de outro nó).
+      - Crie um fluxo lógico: Início -> Entradas -> Processamentos -> Saídas -> Fim.
+      - Posicione os nós verticalmente com um espaçamento de 120px no eixo Y (position.y). O X pode ser fixo em 150.
+      - Para o campo "text" dos nós de entrada, coloque apenas os nomes das variáveis (ex: "num1, num2").
+      - Para o campo "text" dos nós de processo, coloque a expressão de atribuição (ex: "soma <- num1 + num2").
+      - Para o campo "text" dos nós de saída ('display'), coloque o que deve ser exibido (ex: "'A soma é: ', soma").
+
+      Responda APENAS com o código JSON puro, sem formatação markdown, comentários ou qualquer outro texto.
+
+      Enunciado: "${statement}"
+    `;
+    const jsonResponse = await handleGeminiCall(prompt);
+    setIsLoadingAi(false);
+    
+    try {
+        const cleanedResponse = jsonResponse.replace(/```json|```/g, '').trim();
+        const data = JSON.parse(cleanedResponse);
+        if (data.nodes && data.connections) {
+            setNodes(data.nodes);
+            setConnections(data.connections);
+            addToast("Diagrama gerado com sucesso!", "success");
+            setIsStatementModalOpen(false);
+        } else {
+            throw new Error("JSON com formato inválido.");
+        }
+    } catch (error) {
+        console.error("Erro ao processar a resposta da IA:", error);
+        addToast("A IA retornou uma resposta inválida. Tente novamente.", "error");
+    }
+};
+
+const handleGenerateSandraPDF = async () => {
+    if (!isJspdfLoaded || !isHtml2ImageLoaded) {
+        addToast("Componentes essenciais (PDF/Imagem) ainda não carregaram.", "warning");
+        return;
+    }
+    
+    addToast("Gerando PDF completo, por favor aguarde...", "info");
+
+    try {
+        // 1. Gerar Imagem do Diagrama
+        const diagramImage = await window.htmlToImage.toPng(canvasRef.current!, { backgroundColor: '#ffffff', pixelRatio: 1.5 });
+
+        // 2. Gerar Código VisualG (sem comentários)
+        const visualgCodeRaw = generateVisualGCode(false);
+        if (!visualgCodeRaw) {
+            addToast("Não foi possível gerar o código VisualG.", "error");
+            return;
+        }
+        const visualgCode = removeCodeComments(visualgCodeRaw, '//');
+
+        // 3. Gerar Código C++ (sem comentários)
+        const cppPrompt = `Converta o seguinte código VisualG para C++. Forneça apenas o código C++ funcional e completo, sem nenhuma explicação, comentário ou formatação markdown. Inclua os cabeçalhos necessários e use o namespace std.\n\n---\n\n${visualgCodeRaw}`;
+        const cppCodeRaw = await handleGeminiCall(cppPrompt);
+        if (cppCodeRaw.startsWith('Error:')) {
+            addToast("Falha ao gerar o código C++.", "error");
+            return;
+        }
+        const cppCode = removeCodeComments(cppCodeRaw, '//');
+
+        // 4. Gerar Teste de Mesa
+        const tableData = generateTestTableData();
+        if (!tableData) {
+            addToast("Não foi possível gerar o teste de mesa.", "error");
+            return;
+        }
+
+        // 5. Montar o PDF
+        const doc = new window.jspdf.jsPDF();
+        const pageWidth = doc.internal.pageSize.getWidth();
+        const pageHeight = doc.internal.pageSize.getHeight();
+        
+        // --- Página de Rosto ---
+        doc.setFontSize(22);
+        doc.text("Atividade de Algoritmo", pageWidth / 2, 60, { align: 'center' });
+        doc.setFontSize(16);
+        doc.text(`Algoritmo: ${algorithmName}`, pageWidth / 2, 80, { align: 'center' });
+        doc.setFontSize(12);
+        doc.text(`Gerado em: ${new Date().toLocaleDateString('pt-BR')}`, pageWidth / 2, 100, { align: 'center' });
+
+        // --- Página do Diagrama de Blocos ---
+        doc.addPage();
+        doc.setFontSize(18);
+        doc.text("1. Diagrama de Blocos", 14, 22);
+        const imgProps = doc.getImageProperties(diagramImage);
+        const aspect = imgProps.height / imgProps.width;
+        const imgWidth = pageWidth - 28;
+        const imgHeight = imgWidth * aspect;
+        doc.addImage(diagramImage, 'PNG', 14, 30, imgWidth, imgHeight);
+
+        // --- Página do Teste de Mesa ---
+        doc.addPage('landscape');
+        doc.setFontSize(18);
+        doc.text("2. Teste de Mesa", 14, 22);
+        window.jspdf.autoTable(doc, {
+            head: [tableData.headers],
+            body: tableData.rows,
+            startY: 30,
+            theme: 'grid',
+        });
+        
+        // --- Página do Código VisualG ---
+        doc.addPage('portrait');
+        doc.setFontSize(18);
+        doc.text("3. Código em VisualG", 14, 22);
+        doc.setFont('Courier', 'normal');
+        doc.setFontSize(10);
+        doc.text(visualgCode, 14, 32);
+
+        // --- Página do Código C++ ---
+        doc.addPage();
+        doc.setFontSize(18);
+        doc.setFont('Helvetica', 'normal'); // Reset font
+        doc.text("4. Código em C++", 14, 22);
+        doc.setFont('Courier', 'normal');
+        doc.setFontSize(10);
+        doc.text(cppCode, 14, 32);
+        
+        doc.save(`Atividade_Sandra_${algorithmName}.pdf`);
+        addToast("PDF da atividade gerado com sucesso!", "success");
+
+    } catch (error) {
+        console.error("Erro ao gerar PDF da atividade:", error);
+        addToast("Ocorreu um erro inesperado ao gerar o PDF.", "error");
+    }
+};
 
   const autoArrange = () => {
     const startNode = nodes.find(n => n.type === 'start');
@@ -752,10 +999,13 @@ export default function App() {
       <div className="fixed bottom-4 right-4 z-[100] w-full max-w-sm space-y-2">
         {toasts.map((toast) => (<ToastNotification key={toast.id} toast={toast} onDismiss={removeToast} />))}
       </div>
+      
       {editingNodeId && <EditModal node={nodes.find(n => n.id === editingNodeId) || null} onSave={updateNodeData} onClose={() => setEditingNodeId(null)} />}
-      {generatedCode && <CodeModal code={generatedCode} onClose={() => setGeneratedCode(null)} onExplain={handleExplainCode} onGenerateTestTable={handleGenerateTestTable} isPrismLoaded={isPrismLoaded} />}
+      {generatedCode && <CodeModal code={generatedCode} onClose={() => setGeneratedCode(null)} onExplain={handleExplainCode} onGenerateTestTable={handleGenerateTestTable} onConvertToCpp={handleConvertToCpp} isPrismLoaded={isPrismLoaded} />}
+      {generatedCppCode && <GenericCodeModal title="Código C++ Convertido" code={generatedCppCode} language="cpp" onClose={() => setGeneratedCppCode(null)} isPrismLoaded={isPrismLoaded} />}
       {aiResponse && <AiResponseModal title={aiResponse.title} content={aiResponse.content} isLoading={isLoadingAi} onClose={() => setAiResponse(null)} />}
-      {testTableData && <TestTableModal data={testTableData} onClose={() => setTestTableData(null)} onExportPDF={handleExportPDF} isJspdfLoaded={isJspdfLoaded} />}
+      {testTableData && <TestTableModal data={testTableData} onClose={() => setTestTableData(null)} onExportPDF={handleExportTestTablePDF} isJspdfLoaded={isJspdfLoaded} />}
+      <StatementModal isOpen={isStatementModalOpen} onClose={() => setIsStatementModalOpen(false)} onGenerate={handleGenerateFromStatement} isLoading={isLoadingAi} />
 
       <header className="bg-slate-800 text-white p-2 shadow-lg flex justify-between items-center z-40 flex-shrink-0 gap-4 h-16">
         <div className="flex items-center gap-3 h-full">
@@ -763,6 +1013,7 @@ export default function App() {
           <input type="text" value={algorithmName} onChange={(e) => setAlgorithmName(e.target.value)} placeholder="Nome do Algoritmo" className="text-lg md:text-xl font-bold p-2 bg-transparent text-white rounded-md outline-none focus:ring-2 focus:ring-indigo-400 focus:bg-slate-700 transition-all w-full max-w-xs md:max-w-md" aria-label="Nome do Algoritmo" />
         </div>
         <div className="flex items-center space-x-1 flex-shrink-0">
+          <button onClick={() => setIsStatementModalOpen(true)} className="bg-teal-500 hover:bg-teal-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2"><BrainCircuit size={18} /> Gerar via Enunciado</button>
           <button onClick={handleGenerateProblem} className="bg-purple-500 hover:bg-purple-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2"><Sparkles size={18} /> Gerar Problema</button>
           <button onClick={() => generateVisualGCode()} className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2"><Code size={18} /> Gerar Código</button>
           <a href="https://fluxogenius.vercel.app" target="_blank" rel="noopener noreferrer" className="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-3 rounded-lg transition-colors flex items-center gap-2"><Link size={18} /> Criador</a>
@@ -778,7 +1029,8 @@ export default function App() {
             <div className="space-y-2">
               <button onClick={() => setIsConnectMode(c => !c)} className={`w-full p-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors ${isConnectMode ? 'bg-amber-400 text-amber-900' : 'bg-slate-200 hover:bg-slate-300 text-slate-700'}`}><MousePointer2 size={16} /> {isConnectMode ? 'Conectando...' : 'Conectar Blocos'}</button>
               <button onClick={autoArrange} className="w-full bg-slate-200 hover:bg-slate-300 p-2 rounded-lg text-slate-700 font-medium flex items-center justify-center gap-2 transition-colors"><GitCommitVertical size={16} /> Reorganizar Fluxo</button>
-              <button onClick={exportToPNG} disabled={!isScriptLoaded} className="w-full bg-slate-200 hover:bg-slate-300 p-2 rounded-lg text-slate-700 font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><FileImage size={16} /> Exportar PNG</button>
+              <button onClick={handleGenerateSandraPDF} className="w-full bg-pink-600 hover:bg-pink-700 text-white p-2 rounded-lg font-medium flex items-center justify-center gap-2 transition-colors"><FileText size={16} /> Gerar Atividade (PDF)</button>
+              <button onClick={exportToPNG} disabled={!isHtml2ImageLoaded} className="w-full bg-slate-200 hover:bg-slate-300 p-2 rounded-lg text-slate-700 font-medium flex items-center justify-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"><FileImage size={16} /> Exportar PNG</button>
               <button onClick={exportToJSON} className="w-full bg-slate-200 hover:bg-slate-300 p-2 rounded-lg text-slate-700 font-medium flex items-center justify-center gap-2 transition-colors"><Download size={16} /> Salvar JSON</button>
               <button onClick={() => fileInputRef.current?.click()} className="w-full bg-slate-200 hover:bg-slate-300 p-2 rounded-lg text-slate-700 font-medium flex items-center justify-center gap-2 transition-colors"><Upload size={16} /> Carregar JSON</button>
               <input type="file" ref={fileInputRef} accept=".json" className="hidden" onChange={importFromJSON} />
@@ -787,8 +1039,9 @@ export default function App() {
           </div>
         </aside>
 
-        <main className="flex-grow bg-slate-50 relative overflow-hidden border-2 border-slate-300 m-2 rounded-lg" ref={canvasRef} onMouseDown={handleCanvasMouseDown}>
+        <main className="flex-grow bg-slate-50 relative overflow-hidden border-2 border-slate-300 m-2 rounded-lg" onMouseDown={handleCanvasMouseDown}>
           <div
+            ref={canvasRef}
             className={`relative w-full h-full transition-transform duration-200 ${showGrid ? "bg-[linear-gradient(to_right,rgba(0,0,0,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.04)_1px,transparent_1px)] bg-[size:20px_20px]" : ""} ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
             style={{ transform: `scale(${zoom}) translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: "0 0" }}
           >
