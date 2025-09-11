@@ -816,8 +816,21 @@ export default function App() {
   };
 
   const handleConvertToCpp = async (code: string) => {
-    const prompt = `Converta o seguinte código VisualG para C++. Forneça apenas o código C++ funcional e completo, sem nenhuma explicação, comentário ou formatação markdown. Inclua os cabeçalhos necessários como iostream e use o namespace std.\n\n---\n\nVisualG:\n${code}\n\n---\nC++:`;
-    const cppCode = await handleGeminiCall(prompt); // Não exibe modal de carregamento
+    const prompt = `Converta o seguinte código VisualG para C++. O estilo do código C++ deve ser muito simples, como se tivesse sido escrito por um programador iniciante. Siga estas regras estritamente:
+1. Use apenas as bibliotecas básicas, como <iostream> e <string>.
+2. Sempre inclua "using namespace std;" logo após os includes.
+3. Declare todas as variáveis no início da função main().
+4. Não use funções além da main(), classes, ponteiros ou sintaxe moderna de C++ (como "auto").
+5. Forneça APENAS o código C++ puro, sem nenhum comentário, explicação ou formatação markdown.
+
+---
+
+VisualG:
+${code}
+
+---
+C++:`;
+    const cppCode = await handleGeminiCall(prompt);
     if (!cppCode.startsWith('Error:')) {
       setGeneratedCppCode(cppCode);
     } else {
@@ -890,7 +903,20 @@ const handleGenerateSandraPDF = async () => {
         const visualgCode = removeCodeComments(visualgCodeRaw, '//');
 
         // 3. Gerar Código C++ (sem comentários)
-        const cppPrompt = `Converta o seguinte código VisualG para C++. Forneça apenas o código C++ funcional e completo, sem nenhuma explicação, comentário ou formatação markdown. Inclua os cabeçalhos necessários e use o namespace std.\n\n---\n\n${visualgCodeRaw}`;
+        const cppPrompt = `Converta o seguinte código VisualG para C++. O estilo do código C++ deve ser muito simples, como se tivesse sido escrito por um programador iniciante. Siga estas regras estritamente:
+1. Use apenas as bibliotecas básicas, como <iostream> e <string>.
+2. Sempre inclua "using namespace std;" logo após os includes.
+3. Declare todas as variáveis no início da função main().
+4. Não use funções além da main(), classes, ponteiros ou sintaxe moderna de C++ (como "auto").
+5. Forneça APENAS o código C++ puro, sem nenhum comentário, explicação ou formatação markdown.
+
+---
+
+VisualG:
+${visualgCodeRaw}
+
+---
+C++:`;
         const cppCodeRaw = await handleGeminiCall(cppPrompt);
         if (cppCodeRaw.startsWith('Error:')) {
             addToast("Falha ao gerar o código C++.", "error");
