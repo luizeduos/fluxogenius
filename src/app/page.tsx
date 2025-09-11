@@ -864,6 +864,12 @@ C++:`;
     `;
     const jsonResponse = await handleGeminiCall(prompt);
     setIsLoadingAi(false);
+
+    // ADICIONE ESTA VERIFICAÇÃO AQUI
+    if (jsonResponse.startsWith('Error:')) {
+        addToast("A API do Gemini está indisponível. Tente novamente mais tarde.", "error");
+        return; // Interrompe a execução para evitar o erro de JSON.parse
+    }
     
     try {
         const cleanedResponse = jsonResponse.replace(/```json|```/g, '').trim();
