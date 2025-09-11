@@ -762,7 +762,7 @@ export default function App() {
     doc.setFontSize(18);
     doc.setTextColor(40);
     doc.text(`Teste de Mesa: ${algorithmName}`, 14, 22);
-    window.jspdf.autoTable(doc, {
+    doc.autoTable({
       html: '#test-table',
       startY: 30,
       theme: 'grid',
@@ -932,7 +932,7 @@ const handleGenerateSandraPDF = async () => {
         doc.addPage('landscape');
         doc.setFontSize(18);
         doc.text("2. Teste de Mesa", 14, 22);
-        window.jspdf.autoTable(doc, {
+        doc.autoTable({ // <--- Correção aplicada
             head: [tableData.headers],
             body: tableData.rows,
             startY: 30,
