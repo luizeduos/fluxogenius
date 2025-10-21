@@ -797,8 +797,8 @@ export default function App() {
     try {
         // ATENÇÃO: A chave de API está exposta no código do cliente.
         // Em um aplicativo real, essa chamada deve ser feita a partir de um backend para proteger a chave.
-        const apiKey = "AIzaSyDQ85auZUEJu1EWFxFZL5xrlbX7MHu9mlE";
-        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
+        const apiKey = "AIzaSyDQt8L3dGciEYa60Z2RquE-um-gXLEwpSI";
+        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
         const payload = { contents: [{ parts: [{ text: prompt }] }] };
         const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
 
