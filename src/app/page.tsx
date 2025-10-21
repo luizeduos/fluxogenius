@@ -395,6 +395,7 @@ export default function App() {
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [hoveredConnectionId, setHoveredConnectionId] = useState<string | null>(null);
   const [isStatementModalOpen, setIsStatementModalOpen] = useState(false);
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -447,6 +448,7 @@ export default function App() {
   };
 
   const handleDragStart = useCallback((e: React.MouseEvent, id: string) => {
+    if (isSpacePressed) return; // Não arrastar blocos quando a tecla de espaço estiver pressionada
     e.preventDefault();
     const node = nodes.find(n => n.id === id);
     if (!node || !canvasRef.current) return;
@@ -456,13 +458,13 @@ export default function App() {
       y: (e.clientY / zoom) - node.position.y - (canvasRect.top / zoom)
     };
     setDraggingInfo({ id, offset });
-  }, [nodes, zoom]);
+  }, [nodes, zoom, isSpacePressed]);
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isPanning && canvasRef.current) {
       const dx = e.clientX - panStart.x;
       const dy = e.clientY - panStart.y;
-      setPanOffset({ x: panOffset.x + dx / zoom, y: panOffset.y + dy / zoom });
+      setPanOffset(prev => ({ x: prev.x + dx / zoom, y: prev.y + dy / zoom }));
       setPanStart({ x: e.clientX, y: e.clientY });
       return;
     }
@@ -474,7 +476,7 @@ export default function App() {
     newX = Math.round(newX / 20) * 20;
     newY = Math.round(newY / 20) * 20;
     setNodes(prev => prev.map(n => n.id === draggingInfo.id ? { ...n, position: { x: newX, y: newY } } : n));
-  }, [draggingInfo, zoom, isPanning, panStart, panOffset]);
+  }, [draggingInfo, zoom, isPanning, panStart]);
 
   const handleMouseUp = useCallback(() => {
     setDraggingInfo(null);
@@ -482,7 +484,7 @@ export default function App() {
   }, []);
 
   const handleCanvasMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.target === canvasRef.current || (e.target as HTMLElement).parentElement === canvasRef.current) {
+    if (isSpacePressed && (e.target === canvasRef.current || (e.target as HTMLElement).parentElement === canvasRef.current)) {
       setSelectedNodeId(null);
       setIsPanning(true);
       setPanStart({ x: e.clientX, y: e.clientY });
@@ -527,12 +529,27 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Delete' && selectedNodeId && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
-        deleteNode(selectedNodeId);
-      }
+        if (e.key === ' ' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+            e.preventDefault();
+            setIsSpacePressed(true);
+        }
+        if (e.key === 'Delete' && selectedNodeId && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)) {
+            deleteNode(selectedNodeId);
+        }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+        if (e.key === ' ') {
+            e.preventDefault();
+            setIsSpacePressed(false);
+            setIsPanning(false); // Garante que o pan pare ao soltar o espaço
+        }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+        window.removeEventListener('keydown', handleKeyDown);
+        window.removeEventListener('keyup', handleKeyUp);
+    };
   }, [selectedNodeId, deleteNode]);
 
   const exportToPNG = useCallback(() => {
@@ -629,13 +646,13 @@ export default function App() {
       const { type, text } = node;
       switch (type) {
         case 'input':
-          return `   leia(${text})`;
+          return `    leia(${text})`;
         case 'process':
-          return `   ${text}`;
+          return `    ${text}`;
         case 'display':
-          return `   escreval(${text})`;
+          return `    escreval(${text})`;
         case 'write':
-          return `   escreva(${text})`;
+          return `    escreva(${text})`;
         default:
           return null;
       }
@@ -644,10 +661,10 @@ export default function App() {
     let varBlock = '';
     if (variables.size > 0) {
       variables.forEach((type, name) => {
-        varBlock += `   ${name}: ${type}\n`;
+        varBlock += `    ${name}: ${type}\n`;
       });
     } else {
-      varBlock = "   // Nenhuma variável declarada\n";
+      varBlock = "    // Nenhuma variável declarada\n";
     }
 
     const finalCode = `algoritmo "${algorithmName || 'SemNome'}"\nvar\n${varBlock}inicio\n${mainCode}fimalgoritmo\n`;
@@ -743,7 +760,7 @@ export default function App() {
     });
 
     return { headers, rows };
-};
+  };
 
 
   const handleGenerateTestTable = () => {
@@ -780,7 +797,7 @@ export default function App() {
     try {
         // ATENÇÃO: A chave de API está exposta no código do cliente.
         // Em um aplicativo real, essa chamada deve ser feita a partir de um backend para proteger a chave.
-        const apiKey = "AIzaSyDVmFt4Gb4fmwQxa36GITx7YMVvatQCnww";
+        const apiKey = "AIzaSyDQ85auZUEJu1EWFxFZL5xrlbX7MHu9mlE";
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
         const payload = { contents: [{ parts: [{ text: prompt }] }] };
         const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
@@ -1071,10 +1088,10 @@ C++:`;
           </div>
         </aside>
 
-        <main className="flex-grow bg-slate-50 relative overflow-hidden border-2 border-slate-300 m-2 rounded-lg" onMouseDown={handleCanvasMouseDown}>
+        <main className={`flex-grow bg-slate-50 relative overflow-hidden border-2 border-slate-300 m-2 rounded-lg ${isSpacePressed ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''}`} onMouseDown={handleCanvasMouseDown}>
           <div
             ref={canvasRef}
-            className={`relative w-full h-full transition-transform duration-200 ${showGrid ? "bg-[linear-gradient(to_right,rgba(0,0,0,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.04)_1px,transparent_1px)] bg-[size:20px_20px]" : ""} ${isPanning ? 'cursor-grabbing' : 'cursor-grab'}`}
+            className={`relative w-full h-full transition-transform duration-200 ${showGrid ? "bg-[linear-gradient(to_right,rgba(0,0,0,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.04)_1px,transparent_1px)] bg-[size:20px_20px]" : ""}`}
             style={{ transform: `scale(${zoom}) translate(${panOffset.x}px, ${panOffset.y}px)`, transformOrigin: "0 0" }}
           >
             <svg className="absolute top-0 left-0 w-full h-full pointer-events-none" style={{ overflow: "visible" }}>
